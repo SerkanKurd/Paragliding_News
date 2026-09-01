@@ -1,0 +1,36 @@
+fetch_news_task:
+  description: >
+    Use the paragliding_news_fetch_tool to retrieve the latest articles, forum updates, and RSS feed entries
+    related to "{topic}". Collect the source name, article title, publication date, URL, and summary snippet for each entry.
+  expected_output: >
+    A list of raw paragliding news entries with titles, links, dates, and summaries.
+  agent: news_scout
+
+analyze_news_task:
+  description: >
+    Analyze the raw news entries collected by the scout. Filter out duplicate or low-relevance items.
+    Categorize the stories into:
+    1. Gear & Equipment Releases (Gliders, Harnesses, Instruments, Accessories)
+    2. Competitions & World Records (PWC, CIVL, X-Alps, Regional comps)
+    3. Flight Safety & Community (Safety notices, recalls, community initiatives)
+    4. XC & Vol-Bivouac Expeditions
+    Highlight key insights, implications for pilots, and safety notes.
+  expected_output: >
+    A categorized summary of paragliding news with key insights and pilot takeaways.
+  agent: news_analyst
+
+write_digest_task:
+  description: >
+    Compile the categorized analysis into a professional, beautifully styled Markdown report titled "🪂 Paragliding Daily Digest".
+    Organize with clear headers, key takeaways, source links, and an engaging editor's note.
+  expected_output: >
+    A complete, publication-ready Markdown digest file containing the latest paragliding news report.
+  agent: digest_editor
+
+export_json_task:
+  description: >
+    Export all analyzed paragliding news stories, categories, summaries, pilot takeaways, and source links
+    into a clean, valid structured JSON format conforming to the ParaglidingNewsDigestJSON schema.
+  expected_output: >
+    A valid JSON object containing an array of structured paragliding news articles.
+  agent: digest_editor

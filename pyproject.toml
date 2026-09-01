@@ -1,0 +1,25 @@
+[project]
+name = "crewproject"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "SerkanKurd", email = "serkankurd@gmail.com" }
+]
+requires-python = ">=3.10, <3.14"
+dependencies = [
+    "beautifulsoup4>=4.13.5",
+    "crewai>=1.15.15",
+    "crewai-tools>=1.15.15",
+    "feedparser>=6.0.14",
+    "pydantic>=2.12.5",
+    "python-dotenv>=1.2.2",
+    "requests>=2.34.2",
+]
+
+[project.scripts]
+crewproject = "crewproject:main"
+
+[build-system]
+requires = ["uv_build>=0.12.2,<0.13.0"]
+build-backend = "uv_build"
