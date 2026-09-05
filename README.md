@@ -54,3 +54,9 @@ uv run python test_tools.py
 
 The generated report will be saved to:
 `outputs/paragliding_digest.md`
+
+---
+
+## 🗺️ Project Roadmap
+
+Detaylı proje yol haritası ve gelecek fazlar için [ROADMAP.md](ROADMAP.md) dosyasına göz atabilirsiniz.

@@ -1,12 +1,10 @@
 import os
-import yaml
-import shutil
-from pathlib import Path
-from dotenv import load_dotenv
-from crewai import Agent, Crew, Process, Task, LLM
+
+from crewai import LLM, Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
+from dotenv import load_dotenv
+
 from src.paragliding_news_crew.tools.rss_news_tool import ParaglidingNewsFetchTool
-from src.paragliding_news_crew.models import ParaglidingNewsDigestJSON
 
 # Load environment variables
 load_dotenv()
@@ -25,7 +23,7 @@ class ParaglidingNewsCrew():
             api_base += "/v1"
 
         api_key = os.getenv("OPENAI_API_KEY", "your_api_key_here")
-        model_name = os.getenv("MODEL_NAME", "openai/llama")
+        model_name = os.getenv("MODEL_NAME", "openai//models/gemma-4-E2B-it-Q4_K_M.gguf")
         if not model_name.startswith("openai/"):
             model_name = f"openai/{model_name}"
 
@@ -33,10 +31,10 @@ class ParaglidingNewsCrew():
             model=model_name,
             base_url=api_base,
             api_key=api_key,
-            temperature=0.6,
+            temperature=0.5,
         )
 
-        # Initialize tools
+        # Initialize tool
         self.rss_tool = ParaglidingNewsFetchTool()
 
     @agent
@@ -65,33 +63,12 @@ class ParaglidingNewsCrew():
         )
 
     @task
-    def fetch_news_task(self) -> Task:
-        return Task(
-            config=self.tasks_config['fetch_news_task']
-        )
-
-    @task
-    def analyze_news_task(self) -> Task:
-        return Task(
-            config=self.tasks_config['analyze_news_task']
-        )
-
-    @task
     def write_digest_task(self) -> Task:
         os.makedirs("outputs", exist_ok=True)
         return Task(
             config=self.tasks_config['write_digest_task'],
             output_file='outputs/paragliding_digest.md'
-        )
-
-    @task
-    def export_json_task(self) -> Task:
-        os.makedirs("outputs", exist_ok=True)
-        return Task(
-            config=self.tasks_config['export_json_task'],
-            output_json=ParaglidingNewsDigestJSON,
-            output_file='outputs/news.json'
-        )
+        ) # type: ignore
 
     @crew
     def crew(self) -> Crew:

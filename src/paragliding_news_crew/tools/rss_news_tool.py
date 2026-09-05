@@ -1,17 +1,16 @@
-import feedparser
-import urllib.request
-import urllib.parse
-import socket
 import json
 import os
+import urllib.parse
+import urllib.request
 from datetime import datetime
-from bs4 import BeautifulSoup
-from typing import Type, List, Dict, Any, Optional
-from crewai.tools import BaseTool
-from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Optional, Type
 
-# Set global default socket timeout
-socket.setdefaulttimeout(6.0)
+from bs4 import BeautifulSoup
+from crewai.tools import BaseTool
+from curl_cffi import requests as cureq
+from googlenewsdecoder import gnewsdecoder
+from pydantic import BaseModel, Field
+import trafilatura
 
 
 class NewsSearchInput(BaseModel):
@@ -49,88 +48,130 @@ class ParaglidingNewsFetchTool(BaseTool):
         soup = BeautifulSoup(raw_html, "html.parser")
         return soup.get_text(separator=" ", strip=True)
 
+    def _resolve_real_url(self, url: str) -> str:
+        """Resolves Google News redirects and tracking links into real source URLs."""
+        if not url:
+            return ""
+        if "news.google.com" in url:
+            try:
+                decoded = gnewsdecoder(url)
+                if isinstance(decoded, dict) and decoded.get("status") and decoded.get("decoded_url"):
+                    return decoded["decoded_url"]
+            except Exception:
+                pass
+        return url
+
     def _fetch_full_article_text(self, url: str, fallback_summary: str) -> str:
-        """Fetches full article text from webpage paragraphs."""
+        """Fetches and extracts full article text using trafilatura, curl_cffi, and custom HTML parsers."""
         if not url or not url.startswith("http"):
             return fallback_summary
 
-        try:
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ParaglidingNews/1.0'}
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=4.0) as response:
-                html = response.read().decode('utf-8', errors='ignore')
-                soup = BeautifulSoup(html, 'html.parser')
+        real_url = self._resolve_real_url(url)
 
-                # Strip irrelevant UI elements
-                for elem in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'form', 'iframe']):
+        # Strategy 1: Paragliding Forum custom post extraction (span.postbody)
+        if "paraglidingforum.com" in real_url:
+            try:
+                resp = cureq.get(real_url, impersonate="chrome124", timeout=10)
+                if resp.status_code == 200:
+                    soup = BeautifulSoup(resp.text, "html.parser")
+                    for el in soup.find_all(class_=["postdetails", "genmed"]):
+                        el.decompose()
+                    post_bodies = soup.find_all("span", class_="postbody")
+                    if post_bodies:
+                        posts_text = []
+                        for pb in post_bodies[:5]:
+                            txt = pb.get_text(separator=" ", strip=True)
+                            if len(txt) > 30:
+                                posts_text.append(txt)
+                        if posts_text:
+                            return "\n\n---\n\n".join(posts_text)[:3500]
+            except Exception:
+                pass
+
+        # Strategy 2: High fidelity article extraction using curl_cffi + trafilatura
+        try:
+            resp = cureq.get(real_url, impersonate="chrome124", timeout=10)
+            if resp.status_code == 200 and resp.text:
+                extracted = trafilatura.extract(
+                    resp.text,
+                    include_comments=False,
+                    include_tables=True,
+                    no_fallback=False
+                )
+                if extracted and len(extracted.strip()) > 150:
+                    return extracted.strip()[:4000]
+
+                # Strategy 3: BeautifulSoup semantic content extraction fallback
+                soup = BeautifulSoup(resp.text, "html.parser")
+                for elem in soup(["script", "style", "nav", "header", "footer", "aside", "form", "iframe", "noscript"]):
                     elem.decompose()
 
-                # Search for main content container
                 main_node = (
-                    soup.find('article') or 
-                    soup.find('main') or 
-                    soup.find(class_=lambda c: c and any(k in c.lower() for k in ['entry-content', 'post-content', 'article-body', 'content'])) or 
-                    soup.body
+                    soup.find("article")
+                    or soup.find("main")
+                    or soup.find(class_=lambda c: c and any(k in c.lower() for k in ["entry-content", "post-content", "article-body", "article__body", "content", "story-body"]))
+                    or soup.body
                 )
 
                 if main_node:
-                    paragraphs = [p.get_text(separator=" ", strip=True) for p in main_node.find_all('p')]
+                    paragraphs = [p.get_text(separator=" ", strip=True) for p in main_node.find_all("p")]
                     full_text = "\n\n".join(p for p in paragraphs if len(p) > 25)
-                    if len(full_text) > 100:
-                        return full_text
+                    if len(full_text) > 120:
+                        return full_text[:4000]
+        except Exception:
+            pass
 
-                # General text fallback if no paragraphs found
-                text = soup.get_text(separator=" ", strip=True)
-                return text[:2500] if len(text) > 100 else fallback_summary
-
-        except Exception as e:
-            return fallback_summary
+        return fallback_summary
 
     def _fetch_rss(self, feed_url: str, source_name: str, max_results: int) -> List[Dict[str, str]]:
         """Parses an RSS feed and returns structured items with full article content."""
+        import feedparser
         articles = []
         try:
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ParaglidingNews/1.0'}
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
             req = urllib.request.Request(feed_url, headers=headers)
-            with urllib.request.urlopen(req, timeout=5.0) as response:
+            with urllib.request.urlopen(req, timeout=8.0) as response:
                 content = response.read()
                 feed = feedparser.parse(content)
 
             for entry in feed.entries[:max_results]:
-                title = entry.get('title', 'No Title')
-                link = entry.get('link', '')
-                published = entry.get('published', entry.get('updated', 'Recent'))
-                summary_raw = entry.get('summary', entry.get('description', ''))
+                title = entry.get("title", "No Title")
+                link = entry.get("link", "")
+                published = entry.get("published", entry.get("updated", "Recent"))
+                summary_raw = entry.get("summary", entry.get("description", ""))
                 summary = self._clean_html(summary_raw)[:400]
 
                 # Extract full content from RSS content field if present, otherwise fetch from webpage
                 rss_content_raw = ""
-                if 'content' in entry and len(entry['content']) > 0:
-                    rss_content_raw = entry['content'][0].get('value', '')
+                if "content" in entry and len(entry["content"]) > 0:
+                    rss_content_raw = entry["content"][0].get("value", "")
 
                 rss_clean = self._clean_html(rss_content_raw)
-                if len(rss_clean) > 300:
+                real_link = self._resolve_real_url(link)
+
+                if len(rss_clean) > 500:
                     full_content = rss_clean
                 else:
-                    full_content = self._fetch_full_article_text(link, summary)
+                    full_content = self._fetch_full_article_text(real_link, summary)
+                    if len(full_content) < len(rss_clean) and len(rss_clean) > 100:
+                        full_content = rss_clean
 
                 articles.append({
                     "source": source_name,
                     "title": title,
-                    "link": link,
+                    "link": real_link if real_link else link,
                     "published": published,
                     "summary": summary,
                     "content": full_content
                 })
         except Exception as e:
-            # Fallback handling
             articles.append({
                 "source": source_name,
                 "title": f"Status update for {source_name}",
                 "link": feed_url,
                 "published": "N/A",
-                "summary": f"Could not reach feed directly ({str(e)}). Using topic index.",
-                "content": f"Failed to fetch content from {source_name}: {str(e)}"
+                "summary": f"Could not reach feed directly ({e}). Using topic index.",
+                "content": f"Failed to fetch content from {source_name}: {e}"
             })
 
         return articles
@@ -143,7 +184,6 @@ class ParaglidingNewsFetchTool(BaseTool):
             existing_articles = []
             existing_keys = {}
 
-            # Load existing JSON data if present
             if os.path.exists(filepath):
                 try:
                     with open(filepath, "r", encoding="utf-8") as f:
@@ -155,7 +195,6 @@ class ParaglidingNewsFetchTool(BaseTool):
                 except Exception as e:
                     print(f"Notice: Could not parse existing {filepath} ({e}), creating new store.")
 
-            # Collect existing articles map by unique key (link or title)
             for idx, art in enumerate(existing_articles):
                 link = art.get("link", "").strip()
                 title = art.get("title", "").strip()
@@ -163,7 +202,6 @@ class ParaglidingNewsFetchTool(BaseTool):
                 if key:
                     existing_keys[key] = idx
 
-            # Update existing or append new articles
             merged_articles = list(existing_articles)
             added_count = 0
             updated_count = 0
@@ -174,7 +212,6 @@ class ParaglidingNewsFetchTool(BaseTool):
                 key = link if link else title
 
                 if key in existing_keys:
-                    # Update full content if existing entry lacks full content
                     existing_idx = existing_keys[key]
                     existing_art = merged_articles[existing_idx]
                     if len(art.get("content", "")) > len(existing_art.get("content", "")):
@@ -200,7 +237,7 @@ class ParaglidingNewsFetchTool(BaseTool):
                 print(f"Error writing {filepath}: {e}")
 
     def _run(self, query: Optional[str] = "paragliding", max_results: Optional[int] = 5) -> str:
-        """Executes news retrieval across all configured feeds."""
+        """Executes news retrieval across all configured feeds and formats full article content for agents."""
         all_articles: List[Dict[str, str]] = []
         limit = max_results or 5
 
@@ -219,14 +256,19 @@ class ParaglidingNewsFetchTool(BaseTool):
         # Incrementally merge new articles and full content into news.json and outputs/news.json
         self._save_json(all_articles, query or "paragliding")
 
-        # Format output into clean text for LLM agents
+        # Format output into rich text for LLM agents including FULL article content
         output_lines = [f"=== PARAGLIDING NEWS FETCH RESULTS (Query: '{query}') ===\n"]
         for idx, item in enumerate(all_articles, 1):
-            output_lines.append(f"[{idx}] {item['source'].upper()}")
+            output_lines.append(f"[{idx}] SOURCE: {item['source'].upper()}")
             output_lines.append(f"TITLE: {item['title']}")
             output_lines.append(f"PUBLISHED: {item['published']}")
             output_lines.append(f"LINK: {item['link']}")
             output_lines.append(f"SUMMARY: {item['summary']}")
-            output_lines.append(f"FULL CONTENT ({len(item['content'])} chars): {item['content'][:300]}...\n" + "-"*40)
+
+            # Include the substantive full article text so agents have complete context
+            full_text = item.get("content", "").strip()
+            if full_text and len(full_text) > len(item.get("summary", "")):
+                output_lines.append(f"FULL ARTICLE CONTENT:\n{full_text[:2500]}")
+            output_lines.append("-" * 50 + "\n")
 
         return "\n".join(output_lines)

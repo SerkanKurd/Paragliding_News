@@ -11,10 +11,13 @@ dependencies = [
     "beautifulsoup4>=4.13.5",
     "crewai>=1.15.15",
     "crewai-tools>=1.15.15",
+    "curl-cffi>=0.16.3",
     "feedparser>=6.0.14",
+    "googlenewsdecoder>=0.1.7",
     "pydantic>=2.12.5",
     "python-dotenv>=1.2.2",
     "requests>=2.34.2",
+    "trafilatura>=2.2.0",
 ]
 
 [project.scripts]

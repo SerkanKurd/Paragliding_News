@@ -1,17 +1,20 @@
-import sys
 import argparse
 import os
-import json
 import shutil
+import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
+
 from src.paragliding_news_crew.crew import ParaglidingNewsCrew
+from src.paragliding_news_crew.tools.rss_news_tool import ParaglidingNewsFetchTool
 
 # Reconfigure stdout to handle UTF-8 symbols cleanly on Windows
 if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stdout.reconfigure(encoding="utf-8") # type: ignore
 
 load_dotenv()
+
 
 def sync_json_files():
     """Ensures news.json and outputs/news.json are synchronized incrementally."""
@@ -24,18 +27,19 @@ def sync_json_files():
     elif out_json.exists() and not root_json.exists():
         shutil.copy(out_json, root_json)
 
+
 def run():
     parser = argparse.ArgumentParser(description="Paragliding News AI Agent Crew")
     parser.add_argument(
         "--topic",
         type=str,
         default="paragliding safety gear competition",
-        help="Target topic or keyword for paragliding news search (e.g. 'safety', 'X-Alps', 'gear', 'PWC')"
+        help="Target topic or keyword for paragliding news search (e.g. 'safety', 'X-Alps', 'gear', 'PWC')",
     )
     args = parser.parse_args()
 
     api_base = os.getenv("OPENAI_API_BASE", "http://192.168.1.200:8080/v1")
-    model_name = os.getenv("MODEL_NAME", "llama")
+    model_name = os.getenv("MODEL_NAME", "gemma-4-E2B-it-Q4_K_M.gguf")
 
     print("==================================================")
     print(" 🪂 PARAGLIDING NEWS AI AGENT CREW")
@@ -44,9 +48,13 @@ def run():
     print(f" Target Topic: '{args.topic}'")
     print("==================================================\n")
 
-    inputs = {
-        'topic': args.topic
-    }
+    print("[1/2] 🔍 Scraping RSS feeds & extracting full article content...")
+    fetcher_tool = ParaglidingNewsFetchTool()
+    news_text_data = fetcher_tool._run(query=args.topic, max_results=5)
+    print("      ✓ Scraped & incrementally updated news.json!\n")
+
+    print("[2/2] 🤖 Launching AI Agents to analyze & author digest...")
+    inputs = {"topic": args.topic, "news_data": news_text_data}
 
     try:
         crew_instance = ParaglidingNewsCrew()
@@ -55,7 +63,7 @@ def run():
         sync_json_files()
 
         print("\n==================================================")
-        print(" 🎯 PARAGLIDING DIGEST & INCREMENTAL JSON UPDATED!")
+        print(" 🎯 PARAGLIDING DIGEST & JSON GENERATED SUCCESSFULLY!")
         print("==================================================")
 
         root_json = Path("news.json")
@@ -66,8 +74,9 @@ def run():
         if output_md.exists():
             print(f"[+] Markdown report saved to:  {output_md.resolve()}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"\n[!] Crew execution error: {e}")
+
 
 if __name__ == "__main__":
     run()
