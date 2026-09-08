@@ -1,17 +1,40 @@
-write_digest_task:
+analyze_single_article_task:
   description: >
-    Review the fetched paragliding news entries provided below:
-    
-    "{news_data}"
+    Analyze the single paragliding news article provided below:
 
-    Analyze, filter duplicates, and write a professional, beautifully formatted Markdown daily digest titled "🪂 Paragliding Daily Digest".
-    Organize the report into 4 clear sections:
-    1. ⚙️ Gear & Equipment Releases (Gliders, Harnesses, Instruments, Parakites)
-    2. 🏆 Competitions & World Records (PWC, CIVL, X-Alps, Regional events)
-    3. 🛡️ Flight Safety & Community Advisories (Safety notices, airspace updates)
-    4. 🌄 XC & Vol-Bivouac Expeditions
-    
-    Include an engaging Editor's Note at the start summarizing current free-flight trends.
+    SOURCE: {source}
+    TITLE: {title}
+    URL: {link}
+    ARTICLE TEXT:
+    {content}
+
+    Your instructions:
+    1. Determine the best category: "Gear & Equipment", "Competitions & Records", "Flight Safety & Advisories", or "XC & Adventure".
+    2. Write a concise, factual executive summary in English (2 to 4 sentences).
+    3. Formulate a specific, actionable "Pilot Takeaway" (1 to 2 sentences) highlighting what pilots should know or learn.
+
+    Format your response EXACTLY as follows:
+    CATEGORY: <Selected Category>
+    SUMMARY: <Executive summary>
+    PILOT_TAKEAWAY: <Pilot takeaway>
   expected_output: >
-    A complete, publication-ready Markdown digest report saved to outputs/paragliding_digest.md.
-  agent: digest_editor
+    Strict format with CATEGORY, SUMMARY, and PILOT_TAKEAWAY lines.
+  agent: article_analyst
+
+translate_single_article_task:
+  description: >
+    Translate the following analyzed paragliding story into fluent, publication-ready Turkish.
+    Use authentic free-flight terminology (e.g. speedbar, termik, harnes, yedek, kapanma, hücum açısı).
+
+    ENGLISH TITLE: {title}
+    CATEGORY: {category}
+    ENGLISH SUMMARY: {summary_en}
+    ENGLISH PILOT TAKEAWAY: {pilot_takeaway_en}
+
+    Format your response EXACTLY as follows:
+    TITLE_TR: <Turkish title>
+    SUMMARY_TR: <Turkish summary>
+    PILOT_TAKEAWAY_TR: <Turkish pilot takeaway>
+  expected_output: >
+    Strict format with TITLE_TR, SUMMARY_TR, and PILOT_TAKEAWAY_TR lines.
+  agent: aviation_translator
